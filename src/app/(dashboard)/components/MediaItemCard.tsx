@@ -34,8 +34,8 @@ export default function MediaItemCard({ item, onDelete, sortableId }: Props) { /
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
-    width: "200px", // Largura fixa é importante para o cálculo da animação
-    height: '120px',
+    width: "220px", // Largura fixa é importante para o cálculo da animação
+    height: '140px',
     borderRadius: '20px',
     border: '1px solid #EAEAEA',
     overflow: 'hidden',
