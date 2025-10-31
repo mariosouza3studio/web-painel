@@ -8,12 +8,15 @@ import { storage, db } from '@/lib/firebase';
 import { ref as storageRef, deleteObject, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { collection, addDoc, query, orderBy, onSnapshot, writeBatch, doc, deleteDoc, getDocs, setDoc } from 'firebase/firestore';
 
-import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, horizontalListSortingStrategy } from '@dnd-kit/sortable';
 import MediaItemCard from '../components/MediaItemCard';
 
 // Importações do Framer Motion
-import { motion, AnimatePresence, Variants, useMotionValue, animate } from 'framer-motion';
+import { motion, AnimatePresence, Variants, useMotionValue, animate, AnimationPlaybackControls } from 'framer-motion';
+
+// Importação do componente Image do Next.js
+import Image from 'next/image';
 
 interface MediaItem {
   id: string;
@@ -29,15 +32,10 @@ interface LoopItem {
   item: MediaItem;
 }
 
-// --- MELHORIA: Correção de Bug ---
-// O 'MediaItemCard' tem 220px de largura. O valor aqui precisa ser idêntico.
-const ITEM_WIDTH = 220; // Largura do MediaItemCard (estava 200)
-// --- FIM DA MELHORIA ---
-const ITEM_GAP = 16; // 1rem de gap
-
+const ITEM_WIDTH = 220;
+const ITEM_GAP = 16;
 const SLOTS_PER_PAGE = 3;
 
-// Variantes para o carrossel de Upload
 const slideVariants: Variants = {
   initial: (direction: number) => ({
     x: direction > 0 ? '100%' : '-100%',
@@ -65,36 +63,30 @@ export default function DashboardPage() {
 
   const [slideDuration, setSlideDuration] = useState(5);
   const [isPublishing, setIsPublishing] = useState(false);
-  const [currentPreviewIndex, setCurrentPreviewIndex] = useState(0);
+  // AVISO CORRIGIDO: Variável 'currentPreviewIndex' removida pois não era usada.
 
-  // States para o carrossel de Upload
   const [currentSlotPage, setCurrentSlotPage] = useState(0);
   const [pageDirection, setPageDirection] = useState(1);
   const [hoveredSlot, setHoveredSlot] = useState<number | null>(null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
-  // States para o carrossel de D&D
   const [loopingItems, setLoopingItems] = useState<LoopItem[]>([]);
   const [isInteracting, setIsInteracting] = useState(false);
 
-  // Motion Value para o carrossel de D&D
   const x = useMotionValue(0);
 
-  // --- MELHORIA: Performance (Evitar travamento inicial) ---
   const [isLoading, setIsLoading] = useState(true);
   const [isAnimationReady, setIsAnimationReady] = useState(false);
-  // --- FIM DA MELHORIA ---
 
-  // --- Otimização Etapa 1: Apenas carregar dados do Firebase ---
   useEffect(() => {
-    setIsLoading(true); // Garante que está carregando no mount
+    setIsLoading(true);
     const mediaQuery = query(collection(db, 'media'), orderBy('order'));
 
     const unsubscribeMedia = onSnapshot(mediaQuery, (snapshot) => {
       const items = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as MediaItem));
       setMediaItems(items);
-      setIsLoading(false); // <--- SÓ QUANDO OS DADOS CHEGAM
+      setIsLoading(false);
     }, (error) => {
       console.error("Erro ao buscar mídia: ", error);
       setIsLoading(false);
@@ -114,12 +106,8 @@ export default function DashboardPage() {
 
     return () => unsubscribeMedia();
   }, []);
-  // --- FIM DA ETAPA 1 ---
 
-  // --- Otimização Etapa 2: Preparar a lista duplicada (loopingItems) ---
-  // Reage à mudança em 'mediaItems' (APÓS a Etapa 1)
   useEffect(() => {
-    // Se não estiver carregando (Etapa 1 terminou)
     if (!isLoading) {
       if (mediaItems.length > 0) {
         const duplicated = [...mediaItems, ...mediaItems].map((item, index) => ({
@@ -129,55 +117,37 @@ export default function DashboardPage() {
         }));
         setLoopingItems(duplicated);
       } else {
-        setLoopingItems([]); 
+        setLoopingItems([]);
       }
     }
-  }, [mediaItems, isLoading]); // Depende de mediaItems e isLoading
-  // --- FIM DA ETAPA 2 ---
+  }, [mediaItems, isLoading]);
 
-  // --- Otimização Etapa 3: Preparar a animação ---
-  // Reage à mudança em 'loopingItems' (APÓS a Etapa 2)
   useEffect(() => {
     if (loopingItems.length === 0) {
       setIsAnimationReady(false);
       return;
     }
-    // Dá um "respiro" para o React renderizar a lista duplicada (Etapa 2)
     const timer = setTimeout(() => {
       setIsAnimationReady(true);
-    }, 100); 
+    }, 100);
 
     return () => clearTimeout(timer);
-    
-  }, [loopingItems]); 
-  // --- FIM DA ETAPA 3 ---
+  }, [loopingItems]);
 
+  // AVISO CORRIGIDO: useEffect do 'currentPreviewIndex' removido.
 
-  // useEffect para o timer da borda verde
   useEffect(() => {
-    if (mediaItems.length > 0) {
-      const timer = setInterval(() => {
-        setCurrentPreviewIndex((prevIndex) => (prevIndex + 1) % mediaItems.length);
-      }, slideDuration * 1000);
-      return () => clearInterval(timer);
-    }
-  }, [mediaItems, slideDuration]);
+    // ERRO CORRIGIDO: 'animationControls' agora tem o tipo correto.
+let animationControls: AnimationPlaybackControls | undefined;
 
-  // --- Otimização Etapa 4: Iniciar a Animação ---
-  // Reage à 'isAnimationReady' (APÓS a Etapa 3)
-  useEffect(() => {
-    let animationControls: any;
-
-    // A 'isLoading' não é mais necessária aqui, pois 'isAnimationReady' já
-    // depende dela indiretamente.
     if (!isAnimationReady || mediaItems.length === 0) {
-      animationControls?.stop(); 
-      x.set(0); 
-      return; 
+      animationControls?.stop();
+      x.set(0);
+      return;
     }
 
     const oneListWidth = mediaItems.length * ITEM_WIDTH + mediaItems.length * ITEM_GAP;
-    const totalDuration = mediaItems.length * 5; 
+    const totalDuration = mediaItems.length * 5;
 
     if (isInteracting) {
       const currentX = x.get();
@@ -185,10 +155,8 @@ export default function DashboardPage() {
     } else {
       const currentX = x.get();
       const startX = Math.min(0, currentX);
-
       const percentageDone = startX / -oneListWidth;
       const remainingDuration = totalDuration * (1 - percentageDone);
-
       animationControls = animate(x, [startX, -oneListWidth], {
         ease: 'linear',
         duration: remainingDuration,
@@ -205,9 +173,7 @@ export default function DashboardPage() {
     }
 
     return () => animationControls?.stop();
-
   }, [isInteracting, mediaItems.length, isAnimationReady, x]);
-  // --- FIM DA ETAPA 4 ---
 
   const handlePublish = async () => {
     setIsPublishing(true);
@@ -240,16 +206,12 @@ export default function DashboardPage() {
     try {
       const itemToDelete = mediaItems.find((item) => item.id === idToDelete);
       if (!itemToDelete) throw new Error('Mídia não encontrada!');
-
       await deleteDoc(doc(db, 'media', idToDelete));
-
       const fileRef = storageRef(storage, itemToDelete.url);
       await deleteObject(fileRef);
-
       const newOrderedItems = mediaItems
         .filter((item) => item.id !== idToDelete)
         .sort((a, b) => a.order - b.order);
-
       const batch = writeBatch(db);
       newOrderedItems.forEach((item, index) => {
         if (item.order !== index) {
@@ -258,15 +220,11 @@ export default function DashboardPage() {
         }
       });
       await batch.commit();
-
-      // O onSnapshot vai cuidar de atualizar a UI e reiniciar a animação.
-      // Damos um tempo para 'isInteracting' voltar ao normal.
-      if(newOrderedItems.length === 0) {
-         setTimeout(() => setIsInteracting(false), 1000);
+      if (newOrderedItems.length === 0) {
+        setTimeout(() => setIsInteracting(false), 1000);
       } else {
-        setTimeout(() => setIsInteracting(false), 500); 
+        setTimeout(() => setIsInteracting(false), 500);
       }
-      
     } catch (error) {
       console.error('Erro ao excluir mídia: ', error);
       alert('Não foi possível excluir a mídia. Tente novamente.');
@@ -275,22 +233,20 @@ export default function DashboardPage() {
   };
 
   const handleUploadBoxClick = (slotIndex: number) => {
-    if (mediaItems[slotIndex]) return; // Slot já preenchido
+    if (mediaItems[slotIndex]) return;
     if (slotIndex !== mediaItems.length) {
-      // Slot fora de ordem
       alert('Por favor, adicione mídias na ordem, preenchendo os slots vazios da esquerda para a direita.');
       return;
     }
-    // Slot correto, aciona o input
     fileInputRef.current?.click();
   };
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
-      setIsInteracting(true); // Pausa a animação do carrossel D&D
+      setIsInteracting(true);
       handleUpload(event.target.files[0]);
     }
-    event.target.value = ''; // Reseta o input para permitir o upload do mesmo arquivo
+    event.target.value = '';
   };
 
   const handleUpload = (file: File) => {
@@ -307,7 +263,7 @@ export default function DashboardPage() {
         console.error('Erro no upload: ', error);
         setUploadingSlot(null);
         alert('Erro ao enviar. Tente novamente.');
-        setTimeout(() => setIsInteracting(false), 1000); // Reinicia a animação
+        setTimeout(() => setIsInteracting(false), 1000);
       },
       async () => {
         const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
@@ -319,13 +275,13 @@ export default function DashboardPage() {
           order: nextOrder,
         });
         setUploadingSlot(null);
-        // O onSnapshot cuidará de reativar a animação
-        setTimeout(() => setIsInteracting(false), 500); 
+        setTimeout(() => setIsInteracting(false), 500);
       }
     );
   };
-
-  const handleDragEnd = async (event: any) => {
+  
+  // ERRO CORRIGIDO: 'event' agora tem o tipo 'DragEndEvent'
+  const handleDragEnd = async (event: DragEndEvent) => {
     setIsInteracting(true);
     const { active, over } = event;
 
@@ -334,45 +290,35 @@ export default function DashboardPage() {
       return;
     }
 
-    const activeOriginalId = active.id.split('-')[0];
-    const overOriginalId = over.id.split('-')[0];
+    const activeOriginalId = String(active.id).split('-')[0];
+    const overOriginalId = String(over.id).split('-')[0];
 
     if (activeOriginalId !== overOriginalId) {
       const oldIndex = mediaItems.findIndex((item) => item.id === activeOriginalId);
       const newIndex = mediaItems.findIndex((item) => item.id === overOriginalId);
-
       if (oldIndex === -1 || newIndex === -1) {
         setTimeout(() => setIsInteracting(false), 1000);
         return;
       }
-
       const newOrderedItems = arrayMove(mediaItems, oldIndex, newIndex);
-
-      // (Atualização otimista REMOVIDA - onSnapshot é a fonte da verdade)
-
       const batch = writeBatch(db);
       newOrderedItems.forEach((item, index) => {
         const docRef = doc(db, 'media', item.id);
         batch.update(docRef, { order: index });
       });
-      
       try {
         await batch.commit();
-         // O onSnapshot vai ser disparado, o que re-renderiza e
-         // o useEffect da animação vai reiniciar
-         setTimeout(() => {
+        setTimeout(() => {
           setIsInteracting(false);
-        }, 500); // Tempo para o onSnapshot agir
+        }, 500);
       } catch (error) {
         console.error("Erro ao reordenar: ", error);
         setTimeout(() => {
           setIsInteracting(false);
         }, 1000);
       }
-      
     } else {
-      // Se não houve mudança de ordem, apenas reinicia a interação
-       setTimeout(() => {
+      setTimeout(() => {
         setIsInteracting(false);
       }, 500);
     }
@@ -384,7 +330,6 @@ export default function DashboardPage() {
     return date.charAt(0).toUpperCase() + date.slice(1);
   };
 
-  // Funções para o carrossel de Upload
   const handleNextPage = () => {
     if (mediaItems.length >= (currentSlotPage + 1) * SLOTS_PER_PAGE) {
       setPageDirection(1);
@@ -436,14 +381,13 @@ export default function DashboardPage() {
           padding: '0 6rem',
         }}
       >
-        <img
+        {/* AVISO CORRIGIDO: <img> substituído por <Image> */}
+        <Image
           src="/images/logo.svg"
           alt="Logo"
           width={250}
+          height={60} // Adicionado height para o componente Image
           style={{ objectFit: 'contain', marginBottom: '3rem' }}
-          onError={(e) => {
-            e.currentTarget.src = 'https://via.placeholder.com/180x50?text=Sua+Logo+Aqui';
-          }}
         />
         <h1 style={{ fontSize: '2.5rem', fontWeight: 400, color: '#101828', textAlign: 'center' }}>
           Olá, {capitalizedUserName}! O que deseja ajustar hoje?
@@ -459,7 +403,6 @@ export default function DashboardPage() {
       />
 
       {/* --- Seção de Slots de Upload --- */}
-      {/* Esta seção é leve e pode ser renderizada imediatamente */}
       <section
         style={{
           display: 'flex',
@@ -473,9 +416,7 @@ export default function DashboardPage() {
         <button
           onClick={handlePrevPage}
           disabled={!canGoPrev}
-          // --- MELHORIA: Acessibilidade ---
           aria-label="Página anterior"
-          // --- FIM DA MELHORIA ---
           style={{
             ...arrowButtonStyle,
             opacity: canGoPrev ? 1 : 0.3,
@@ -489,15 +430,7 @@ export default function DashboardPage() {
           <FaArrowLeft />
         </button>
 
-        <div
-          style={{
-            flex: 1,
-            display: 'flex',
-            position: 'relative',
-            minHeight: '310px',
-            alignItems: 'center',
-          }}
-        >
+        <div style={{ flex: 1, display: 'flex', position: 'relative', minHeight: '310px', alignItems: 'center' }}>
           <AnimatePresence initial={false} custom={pageDirection}>
             <motion.div
               key={currentSlotPage}
@@ -522,7 +455,6 @@ export default function DashboardPage() {
                 const media = mediaItems[mediaIndex];
                 const isUploading = uploadingSlot === mediaIndex;
                 const isNextAvailableSlot = mediaIndex === mediaItems.length;
-
                 const isFilled = !!media;
                 const isCurrentHovered = hoveredSlot === mediaIndex;
                 const transformY = isFilled && isCurrentHovered ? '-3rem' : '0';
@@ -539,7 +471,6 @@ export default function DashboardPage() {
                       cursor: media ? 'default' : isNextAvailableSlot ? 'pointer' : 'not-allowed',
                     }}
                   >
-                    {/* BOX DE NÚMERO (STATIC/BACK) */}
                     <div
                       style={{
                         position: 'absolute',
@@ -564,12 +495,10 @@ export default function DashboardPage() {
                     >
                       {String(mediaIndex + 1).padStart(2, '0')}
                     </div>
-
-                    {/* --- MELHORIA: Acessibilidade (Troca de <div> por <button>) --- */}
                     <button
                       type="button"
                       onClick={() => handleUploadBoxClick(mediaIndex)}
-                      disabled={!isNextAvailableSlot && !media} // Desabilita se não for o próximo ou se já tiver mídia
+                      disabled={!isNextAvailableSlot && !media}
                       aria-label={
                         media
                           ? `Mídia ${mediaIndex + 1}: ${media.fileName}`
@@ -578,12 +507,10 @@ export default function DashboardPage() {
                           : 'Slot de mídia vazio'
                       }
                       style={{
-                        // Reset de estilos do botão
                         border: 'none',
                         padding: 0,
                         font: 'inherit',
                         textAlign: 'center',
-                        // Estilos originais da <div>
                         width: '100%',
                         height: '280px',
                         background: 'white',
@@ -603,7 +530,6 @@ export default function DashboardPage() {
                         cursor: isNextAvailableSlot ? 'pointer' : 'default',
                       }}
                     >
-                      {/* --- FIM DA MELHORIA --- */}
                       {isUploading ? (
                         <>
                           <FaSpinner className="animate-spin" size={30} />
@@ -611,10 +537,12 @@ export default function DashboardPage() {
                         </>
                       ) : media ? (
                         media.type === 'image' ? (
-                          <img
+                          // AVISO CORRIGIDO: <img> substituído por <Image>
+                          <Image
                             src={media.url}
                             alt={media.fileName}
-                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                            layout="fill"
+                            style={{ objectFit: 'cover' }}
                           />
                         ) : (
                           <div
@@ -657,8 +585,7 @@ export default function DashboardPage() {
                           <p>{isNextAvailableSlot ? 'Adicionar Mídia' : 'Slot Vazio'}</p>
                         </>
                       )}
-                    </button>{' '}
-                    {/* Fim do <button> */}
+                    </button>
                   </div>
                 );
               })}
@@ -669,9 +596,7 @@ export default function DashboardPage() {
         <button
           onClick={handleNextPage}
           disabled={!canGoNext}
-          // --- MELHORIA: Acessibilidade ---
           aria-label="Página seguinte"
-          // --- FIM DA MELHORIA ---
           style={{
             ...arrowButtonStyle,
             opacity: canGoNext ? 1 : 0.3,
@@ -686,10 +611,8 @@ export default function DashboardPage() {
         </button>
       </section>
 
-      {/* --- MINHA ALTERAÇÃO: Seção de D&D (Carrossel Infinito) --- */}
-      {/* Esta é a parte pesada. Só renderiza APÓS os dados chegarem. */}
+      {/* --- Seção de D&D (Carrossel Infinito) --- */}
       {isLoading ? (
-        // Enquanto 'isLoading' for true, mostra um placeholder leve
         <div style={{
           flex: 1,
           marginBottom: '4rem',
@@ -700,16 +623,14 @@ export default function DashboardPage() {
           justifyContent: 'center',
           alignItems: 'center',
           padding: '1rem 6rem',
-          color: '#667085', // Cor do texto do footer
+          color: '#667085',
         }}>
           <FaSpinner className="animate-spin" size={24} />
-          <p style={{fontSize: '1.1rem', marginLeft: '1rem', fontWeight: 500}}>
+          <p style={{ fontSize: '1.1rem', marginLeft: '1rem', fontWeight: 500 }}>
             Carregando mídias...
           </p>
         </div>
       ) : (
-        // Quando 'isLoading' for false, renderiza a seção pesada.
-        // As Etapas 2, 3 e 4 cuidarão da performance a partir daqui.
         <section
           style={{
             flex: 1,
@@ -728,11 +649,6 @@ export default function DashboardPage() {
               items={loopingItems.map((item) => item.sortableId)}
               strategy={horizontalListSortingStrategy}
             >
-              {/* Renderiza o motion.div diretamente.
-                O 'loopingItems' estará vazio no primeiro render, 
-                depois será preenchido (Etapa 2), e SÓ ENTÃO a animação 
-                será ativada (Etapa 4), prevenindo o "jank".
-              */}
               <motion.div
                 style={{
                   display: 'flex',
@@ -740,7 +656,7 @@ export default function DashboardPage() {
                   gap: '1rem',
                   padding: '1rem 6rem',
                   minHeight: '150px',
-                  x, // Conecta o motion value ao estilo
+                  x,
                 }}
               >
                 {loopingItems.map((loopItem) => (
@@ -763,8 +679,6 @@ export default function DashboardPage() {
           </DndContext>
         </section>
       )}
-      {/* --- FIM DA MINHA ALTERAÇÃO --- */}
-
 
       {/* Footer */}
       <footer
@@ -785,9 +699,7 @@ export default function DashboardPage() {
               type="range"
               min="5"
               max="45"
-              // --- MELHORIA: Acessibilidade ---
               aria-label="Duração do slide em segundos"
-              // --- FIM DA MELHORIA ---
               value={slideDuration}
               onChange={(e) => setSlideDuration(Number(e.target.value))}
               style={{ accentColor: '#1D3531' }}

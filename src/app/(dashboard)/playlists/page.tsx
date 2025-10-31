@@ -4,6 +4,7 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '@/lib/firebase';
 import { collection, getDocs, setDoc, doc } from 'firebase/firestore';
+import Image from 'next/image'; // Importação do componente Image
 
 // Componente para a fileira de placeholders
 const PlaylistRow = ({ day }: { day: string }) => (
@@ -11,7 +12,7 @@ const PlaylistRow = ({ day }: { day: string }) => (
     style={{
       display: 'flex',
       alignItems: 'center',
-      gap: '1rem', // Diminuído o gap de 1.5rem para 1rem
+      gap: '1rem',
       width: '100%',
     }}
   >
@@ -22,8 +23,7 @@ const PlaylistRow = ({ day }: { day: string }) => (
         color: '#667085',
         fontWeight: 500,
         flexShrink: 0,
-        // Adiciona um padding vertical sutil para alinhamento
-        padding: '0.5rem 0', 
+        padding: '0.5rem 0',
       }}
     >
       {day}
@@ -33,8 +33,7 @@ const PlaylistRow = ({ day }: { day: string }) => (
         key={index}
         style={{
           flex: 1,
-          // Reduzida a altura de 140px para 100px para caber na tela
-          height: '120px', 
+          height: '120px',
           background: '#FFFFFF',
           borderRadius: '24px',
           boxShadow: '0 4px 12px rgba(0,0,0,0.03)',
@@ -47,7 +46,6 @@ const PlaylistRow = ({ day }: { day: string }) => (
 );
 
 export default function PlaylistsPage() {
-  // Lógica do Footer (permanece igual)
   const [slideDuration, setSlideDuration] = useState(5);
   const [isPublishing, setIsPublishing] = useState(false);
 
@@ -82,65 +80,61 @@ export default function PlaylistsPage() {
     }
     setIsPublishing(false);
   };
-  // Fim da lógica do Footer
 
   const days = ['Dia 10', 'Dia 11', 'Dia 12', 'Dia 13', 'Dia 14'];
 
   return (
     <div
       style={{
-        // Padding superior e inferior reduzido para dar mais espaço vertical
-        padding: '2rem 6rem 2rem 6rem', 
+        padding: '2rem 6rem 2rem 6rem',
         display: 'flex',
         flexDirection: 'column',
-        height: '100vh', 
+        height: '100vh',
         boxSizing: 'border-box',
-        overflowY: 'hidden', 
+        overflowY: 'hidden',
       }}
     >
-      {/* Header com a logo */}
       <header
         style={{
           display: 'flex',
           justifyContent: 'flex-end',
-          marginBottom: '2rem', // Reduzida a margem inferior
+          marginBottom: '2rem',
           flexShrink: 0,
         }}
       >
-        <img
+        {/* AVISO CORRIGIDO: <img> substituído por <Image> */}
+        <Image
           src="/images/logo.svg"
           alt="Logo"
           width={180}
+          height={40} // Adicionado height
           style={{ objectFit: 'contain' }}
         />
       </header>
 
-      {/* Conteúdo principal (Placeholders) */}
       <main
         style={{
-          flex: 1, 
+          flex: 1,
           display: 'flex',
           flexDirection: 'column',
-          gap: '1rem', // Reduzido o gap de 1.5rem para 1rem
-          overflowY: 'hidden', 
-          justifyContent: 'space-evenly', // Adicionado: Distribui o espaço entre as linhas
+          gap: '1rem',
+          overflowY: 'hidden',
+          justifyContent: 'space-evenly',
         }}
       >
         {days.map((day) => (
-          // Usando flex: 1 para cada linha, permitindo o encolhimento sutil se necessário
           <div key={day} style={{ flex: 1, minHeight: 0 }}>
-             <PlaylistRow day={day} />
+            <PlaylistRow day={day} />
           </div>
         ))}
       </main>
 
-      {/* Footer */}
       <footer
         style={{
           display: 'flex',
           justifyContent: 'flex-end',
           alignItems: 'center',
-          paddingTop: '1rem', // Reduzido o padding superior
+          paddingTop: '1rem',
           flexShrink: 0,
         }}
       >
