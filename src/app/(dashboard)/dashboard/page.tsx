@@ -8,15 +8,12 @@ import { storage, db } from '@/lib/firebase';
 import { ref as storageRef, deleteObject, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { collection, addDoc, query, orderBy, onSnapshot, writeBatch, doc, deleteDoc, getDocs, setDoc } from 'firebase/firestore';
 
-import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { arrayMove, SortableContext, horizontalListSortingStrategy } from '@dnd-kit/sortable';
 import MediaItemCard from '../components/MediaItemCard';
 
 // Importações do Framer Motion
-import { motion, AnimatePresence, Variants, useMotionValue, animate, AnimationPlaybackControls } from 'framer-motion';
-
-// Importação do componente Image do Next.js
-import Image from 'next/image';
+import { motion, AnimatePresence, Variants, useMotionValue, animate } from 'framer-motion';
 
 interface MediaItem {
   id: string;
@@ -32,10 +29,15 @@ interface LoopItem {
   item: MediaItem;
 }
 
-const ITEM_WIDTH = 220;
-const ITEM_GAP = 16;
+// --- MELHORIA: Correção de Bug ---
+// O 'MediaItemCard' tem 220px de largura. O valor aqui precisa ser idêntico.
+const ITEM_WIDTH = 220; // Largura do MediaItemCard (estava 200)
+// --- FIM DA MELHORIA ---
+const ITEM_GAP = 16; // 1rem de gap
+
 const SLOTS_PER_PAGE = 3;
 
+// Variantes para o carrossel de Upload
 const slideVariants: Variants = {
   initial: (direction: number) => ({
     x: direction > 0 ? '100%' : '-100%',
@@ -63,30 +65,36 @@ export default function DashboardPage() {
 
   const [slideDuration, setSlideDuration] = useState(5);
   const [isPublishing, setIsPublishing] = useState(false);
-  // AVISO CORRIGIDO: Variável 'currentPreviewIndex' removida pois não era usada.
+  const [currentPreviewIndex, setCurrentPreviewIndex] = useState(0);
 
+  // States para o carrossel de Upload
   const [currentSlotPage, setCurrentSlotPage] = useState(0);
   const [pageDirection, setPageDirection] = useState(1);
   const [hoveredSlot, setHoveredSlot] = useState<number | null>(null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
+  // States para o carrossel de D&D
   const [loopingItems, setLoopingItems] = useState<LoopItem[]>([]);
   const [isInteracting, setIsInteracting] = useState(false);
 
+  // Motion Value para o carrossel de D&D
   const x = useMotionValue(0);
 
+  // --- MELHORIA: Performance (Evitar travamento inicial) ---
   const [isLoading, setIsLoading] = useState(true);
   const [isAnimationReady, setIsAnimationReady] = useState(false);
+  // --- FIM DA MELHORIA ---
 
+  // --- Otimização Etapa 1: Apenas carregar dados do Firebase ---
   useEffect(() => {
-    setIsLoading(true);
+    setIsLoading(true); // Garante que está carregando no mount
     const mediaQuery = query(collection(db, 'media'), orderBy('order'));
 
     const unsubscribeMedia = onSnapshot(mediaQuery, (snapshot) => {
       const items = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as MediaItem));
       setMediaItems(items);
-      setIsLoading(false);
+      setIsLoading(false); // <--- SÓ QUANDO OS DADOS CHEGAM
     }, (error) => {
       console.error("Erro ao buscar mídia: ", error);
       setIsLoading(false);
@@ -106,8 +114,12 @@ export default function DashboardPage() {
 
     return () => unsubscribeMedia();
   }, []);
+  // --- FIM DA ETAPA 1 ---
 
+  // --- Otimização Etapa 2: Preparar a lista duplicada (loopingItems) ---
+  // Reage à mudança em 'mediaItems' (APÓS a Etapa 1)
   useEffect(() => {
+    // Se não estiver carregando (Etapa 1 terminou)
     if (!isLoading) {
       if (mediaItems.length > 0) {
         const duplicated = [...mediaItems, ...mediaItems].map((item, index) => ({
@@ -117,37 +129,55 @@ export default function DashboardPage() {
         }));
         setLoopingItems(duplicated);
       } else {
-        setLoopingItems([]);
+        setLoopingItems([]); 
       }
     }
-  }, [mediaItems, isLoading]);
+  }, [mediaItems, isLoading]); // Depende de mediaItems e isLoading
+  // --- FIM DA ETAPA 2 ---
 
+  // --- Otimização Etapa 3: Preparar a animação ---
+  // Reage à mudança em 'loopingItems' (APÓS a Etapa 2)
   useEffect(() => {
     if (loopingItems.length === 0) {
       setIsAnimationReady(false);
       return;
     }
+    // Dá um "respiro" para o React renderizar a lista duplicada (Etapa 2)
     const timer = setTimeout(() => {
       setIsAnimationReady(true);
-    }, 100);
+    }, 100); 
 
     return () => clearTimeout(timer);
-  }, [loopingItems]);
+    
+  }, [loopingItems]); 
+  // --- FIM DA ETAPA 3 ---
 
-  // AVISO CORRIGIDO: useEffect do 'currentPreviewIndex' removido.
 
+  // useEffect para o timer da borda verde
   useEffect(() => {
-    // ERRO CORRIGIDO: 'animationControls' agora tem o tipo correto.
-let animationControls: AnimationPlaybackControls | undefined;
+    if (mediaItems.length > 0) {
+      const timer = setInterval(() => {
+        setCurrentPreviewIndex((prevIndex) => (prevIndex + 1) % mediaItems.length);
+      }, slideDuration * 1000);
+      return () => clearInterval(timer);
+    }
+  }, [mediaItems, slideDuration]);
 
+  // --- Otimização Etapa 4: Iniciar a Animação ---
+  // Reage à 'isAnimationReady' (APÓS a Etapa 3)
+  useEffect(() => {
+    let animationControls: any;
+
+    // A 'isLoading' não é mais necessária aqui, pois 'isAnimationReady' já
+    // depende dela indiretamente.
     if (!isAnimationReady || mediaItems.length === 0) {
-      animationControls?.stop();
-      x.set(0);
-      return;
+      animationControls?.stop(); 
+      x.set(0); 
+      return; 
     }
 
     const oneListWidth = mediaItems.length * ITEM_WIDTH + mediaItems.length * ITEM_GAP;
-    const totalDuration = mediaItems.length * 5;
+    const totalDuration = mediaItems.length * 5; 
 
     if (isInteracting) {
       const currentX = x.get();
@@ -155,8 +185,10 @@ let animationControls: AnimationPlaybackControls | undefined;
     } else {
       const currentX = x.get();
       const startX = Math.min(0, currentX);
+
       const percentageDone = startX / -oneListWidth;
       const remainingDuration = totalDuration * (1 - percentageDone);
+
       animationControls = animate(x, [startX, -oneListWidth], {
         ease: 'linear',
         duration: remainingDuration,
@@ -173,7 +205,9 @@ let animationControls: AnimationPlaybackControls | undefined;
     }
 
     return () => animationControls?.stop();
+
   }, [isInteracting, mediaItems.length, isAnimationReady, x]);
+  // --- FIM DA ETAPA 4 ---
 
   const handlePublish = async () => {
     setIsPublishing(true);
@@ -206,12 +240,16 @@ let animationControls: AnimationPlaybackControls | undefined;
     try {
       const itemToDelete = mediaItems.find((item) => item.id === idToDelete);
       if (!itemToDelete) throw new Error('Mídia não encontrada!');
+
       await deleteDoc(doc(db, 'media', idToDelete));
+
       const fileRef = storageRef(storage, itemToDelete.url);
       await deleteObject(fileRef);
+
       const newOrderedItems = mediaItems
         .filter((item) => item.id !== idToDelete)
         .sort((a, b) => a.order - b.order);
+
       const batch = writeBatch(db);
       newOrderedItems.forEach((item, index) => {
         if (item.order !== index) {
@@ -220,11 +258,15 @@ let animationControls: AnimationPlaybackControls | undefined;
         }
       });
       await batch.commit();
-      if (newOrderedItems.length === 0) {
-        setTimeout(() => setIsInteracting(false), 1000);
+
+      // O onSnapshot vai cuidar de atualizar a UI e reiniciar a animação.
+      // Damos um tempo para 'isInteracting' voltar ao normal.
+      if(newOrderedItems.length === 0) {
+         setTimeout(() => setIsInteracting(false), 1000);
       } else {
-        setTimeout(() => setIsInteracting(false), 500);
+        setTimeout(() => setIsInteracting(false), 500); 
       }
+      
     } catch (error) {
       console.error('Erro ao excluir mídia: ', error);
       alert('Não foi possível excluir a mídia. Tente novamente.');
@@ -233,20 +275,22 @@ let animationControls: AnimationPlaybackControls | undefined;
   };
 
   const handleUploadBoxClick = (slotIndex: number) => {
-    if (mediaItems[slotIndex]) return;
+    if (mediaItems[slotIndex]) return; // Slot já preenchido
     if (slotIndex !== mediaItems.length) {
+      // Slot fora de ordem
       alert('Por favor, adicione mídias na ordem, preenchendo os slots vazios da esquerda para a direita.');
       return;
     }
+    // Slot correto, aciona o input
     fileInputRef.current?.click();
   };
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
-      setIsInteracting(true);
+      setIsInteracting(true); // Pausa a animação do carrossel D&D
       handleUpload(event.target.files[0]);
     }
-    event.target.value = '';
+    event.target.value = ''; // Reseta o input para permitir o upload do mesmo arquivo
   };
 
   const handleUpload = (file: File) => {
@@ -263,7 +307,7 @@ let animationControls: AnimationPlaybackControls | undefined;
         console.error('Erro no upload: ', error);
         setUploadingSlot(null);
         alert('Erro ao enviar. Tente novamente.');
-        setTimeout(() => setIsInteracting(false), 1000);
+        setTimeout(() => setIsInteracting(false), 1000); // Reinicia a animação
       },
       async () => {
         const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
@@ -275,13 +319,13 @@ let animationControls: AnimationPlaybackControls | undefined;
           order: nextOrder,
         });
         setUploadingSlot(null);
-        setTimeout(() => setIsInteracting(false), 500);
+        // O onSnapshot cuidará de reativar a animação
+        setTimeout(() => setIsInteracting(false), 500); 
       }
     );
   };
-  
-  // ERRO CORRIGIDO: 'event' agora tem o tipo 'DragEndEvent'
-  const handleDragEnd = async (event: DragEndEvent) => {
+
+  const handleDragEnd = async (event: any) => {
     setIsInteracting(true);
     const { active, over } = event;
 
@@ -290,35 +334,45 @@ let animationControls: AnimationPlaybackControls | undefined;
       return;
     }
 
-    const activeOriginalId = String(active.id).split('-')[0];
-    const overOriginalId = String(over.id).split('-')[0];
+    const activeOriginalId = active.id.split('-')[0];
+    const overOriginalId = over.id.split('-')[0];
 
     if (activeOriginalId !== overOriginalId) {
       const oldIndex = mediaItems.findIndex((item) => item.id === activeOriginalId);
       const newIndex = mediaItems.findIndex((item) => item.id === overOriginalId);
+
       if (oldIndex === -1 || newIndex === -1) {
         setTimeout(() => setIsInteracting(false), 1000);
         return;
       }
+
       const newOrderedItems = arrayMove(mediaItems, oldIndex, newIndex);
+
+      // (Atualização otimista REMOVIDA - onSnapshot é a fonte da verdade)
+
       const batch = writeBatch(db);
       newOrderedItems.forEach((item, index) => {
         const docRef = doc(db, 'media', item.id);
         batch.update(docRef, { order: index });
       });
+      
       try {
         await batch.commit();
-        setTimeout(() => {
+         // O onSnapshot vai ser disparado, o que re-renderiza e
+         // o useEffect da animação vai reiniciar
+         setTimeout(() => {
           setIsInteracting(false);
-        }, 500);
+        }, 500); // Tempo para o onSnapshot agir
       } catch (error) {
         console.error("Erro ao reordenar: ", error);
         setTimeout(() => {
           setIsInteracting(false);
         }, 1000);
       }
+      
     } else {
-      setTimeout(() => {
+      // Se não houve mudança de ordem, apenas reinicia a interação
+       setTimeout(() => {
         setIsInteracting(false);
       }, 500);
     }
@@ -330,6 +384,7 @@ let animationControls: AnimationPlaybackControls | undefined;
     return date.charAt(0).toUpperCase() + date.slice(1);
   };
 
+  // Funções para o carrossel de Upload
   const handleNextPage = () => {
     if (mediaItems.length >= (currentSlotPage + 1) * SLOTS_PER_PAGE) {
       setPageDirection(1);
@@ -381,13 +436,14 @@ let animationControls: AnimationPlaybackControls | undefined;
           padding: '0 6rem',
         }}
       >
-        {/* AVISO CORRIGIDO: <img> substituído por <Image> */}
-        <Image
+        <img
           src="/images/logo.svg"
           alt="Logo"
           width={250}
-          height={60} // Adicionado height para o componente Image
           style={{ objectFit: 'contain', marginBottom: '3rem' }}
+          onError={(e) => {
+            e.currentTarget.src = 'https://via.placeholder.com/180x50?text=Sua+Logo+Aqui';
+          }}
         />
         <h1 style={{ fontSize: '2.5rem', fontWeight: 400, color: '#101828', textAlign: 'center' }}>
           Olá, {capitalizedUserName}! O que deseja ajustar hoje?
@@ -403,6 +459,7 @@ let animationControls: AnimationPlaybackControls | undefined;
       />
 
       {/* --- Seção de Slots de Upload --- */}
+      {/* Esta seção é leve e pode ser renderizada imediatamente */}
       <section
         style={{
           display: 'flex',
@@ -416,7 +473,9 @@ let animationControls: AnimationPlaybackControls | undefined;
         <button
           onClick={handlePrevPage}
           disabled={!canGoPrev}
+          // --- MELHORIA: Acessibilidade ---
           aria-label="Página anterior"
+          // --- FIM DA MELHORIA ---
           style={{
             ...arrowButtonStyle,
             opacity: canGoPrev ? 1 : 0.3,
@@ -430,7 +489,15 @@ let animationControls: AnimationPlaybackControls | undefined;
           <FaArrowLeft />
         </button>
 
-        <div style={{ flex: 1, display: 'flex', position: 'relative', minHeight: '310px', alignItems: 'center' }}>
+        <div
+          style={{
+            flex: 1,
+            display: 'flex',
+            position: 'relative',
+            minHeight: '310px',
+            alignItems: 'center',
+          }}
+        >
           <AnimatePresence initial={false} custom={pageDirection}>
             <motion.div
               key={currentSlotPage}
@@ -455,6 +522,7 @@ let animationControls: AnimationPlaybackControls | undefined;
                 const media = mediaItems[mediaIndex];
                 const isUploading = uploadingSlot === mediaIndex;
                 const isNextAvailableSlot = mediaIndex === mediaItems.length;
+
                 const isFilled = !!media;
                 const isCurrentHovered = hoveredSlot === mediaIndex;
                 const transformY = isFilled && isCurrentHovered ? '-3rem' : '0';
@@ -471,6 +539,7 @@ let animationControls: AnimationPlaybackControls | undefined;
                       cursor: media ? 'default' : isNextAvailableSlot ? 'pointer' : 'not-allowed',
                     }}
                   >
+                    {/* BOX DE NÚMERO (STATIC/BACK) */}
                     <div
                       style={{
                         position: 'absolute',
@@ -495,10 +564,12 @@ let animationControls: AnimationPlaybackControls | undefined;
                     >
                       {String(mediaIndex + 1).padStart(2, '0')}
                     </div>
+
+                    {/* --- MELHORIA: Acessibilidade (Troca de <div> por <button>) --- */}
                     <button
                       type="button"
                       onClick={() => handleUploadBoxClick(mediaIndex)}
-                      disabled={!isNextAvailableSlot && !media}
+                      disabled={!isNextAvailableSlot && !media} // Desabilita se não for o próximo ou se já tiver mídia
                       aria-label={
                         media
                           ? `Mídia ${mediaIndex + 1}: ${media.fileName}`
@@ -507,10 +578,12 @@ let animationControls: AnimationPlaybackControls | undefined;
                           : 'Slot de mídia vazio'
                       }
                       style={{
+                        // Reset de estilos do botão
                         border: 'none',
                         padding: 0,
                         font: 'inherit',
                         textAlign: 'center',
+                        // Estilos originais da <div>
                         width: '100%',
                         height: '280px',
                         background: 'white',
@@ -530,6 +603,7 @@ let animationControls: AnimationPlaybackControls | undefined;
                         cursor: isNextAvailableSlot ? 'pointer' : 'default',
                       }}
                     >
+                      {/* --- FIM DA MELHORIA --- */}
                       {isUploading ? (
                         <>
                           <FaSpinner className="animate-spin" size={30} />
@@ -537,12 +611,10 @@ let animationControls: AnimationPlaybackControls | undefined;
                         </>
                       ) : media ? (
                         media.type === 'image' ? (
-                          // AVISO CORRIGIDO: <img> substituído por <Image>
-                          <Image
+                          <img
                             src={media.url}
                             alt={media.fileName}
-                            layout="fill"
-                            style={{ objectFit: 'cover' }}
+                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                           />
                         ) : (
                           <div
@@ -585,7 +657,8 @@ let animationControls: AnimationPlaybackControls | undefined;
                           <p>{isNextAvailableSlot ? 'Adicionar Mídia' : 'Slot Vazio'}</p>
                         </>
                       )}
-                    </button>
+                    </button>{' '}
+                    {/* Fim do <button> */}
                   </div>
                 );
               })}
@@ -596,7 +669,9 @@ let animationControls: AnimationPlaybackControls | undefined;
         <button
           onClick={handleNextPage}
           disabled={!canGoNext}
+          // --- MELHORIA: Acessibilidade ---
           aria-label="Página seguinte"
+          // --- FIM DA MELHORIA ---
           style={{
             ...arrowButtonStyle,
             opacity: canGoNext ? 1 : 0.3,
@@ -611,8 +686,10 @@ let animationControls: AnimationPlaybackControls | undefined;
         </button>
       </section>
 
-      {/* --- Seção de D&D (Carrossel Infinito) --- */}
+      {/* --- MINHA ALTERAÇÃO: Seção de D&D (Carrossel Infinito) --- */}
+      {/* Esta é a parte pesada. Só renderiza APÓS os dados chegarem. */}
       {isLoading ? (
+        // Enquanto 'isLoading' for true, mostra um placeholder leve
         <div style={{
           flex: 1,
           marginBottom: '4rem',
@@ -623,14 +700,16 @@ let animationControls: AnimationPlaybackControls | undefined;
           justifyContent: 'center',
           alignItems: 'center',
           padding: '1rem 6rem',
-          color: '#667085',
+          color: '#667085', // Cor do texto do footer
         }}>
           <FaSpinner className="animate-spin" size={24} />
-          <p style={{ fontSize: '1.1rem', marginLeft: '1rem', fontWeight: 500 }}>
+          <p style={{fontSize: '1.1rem', marginLeft: '1rem', fontWeight: 500}}>
             Carregando mídias...
           </p>
         </div>
       ) : (
+        // Quando 'isLoading' for false, renderiza a seção pesada.
+        // As Etapas 2, 3 e 4 cuidarão da performance a partir daqui.
         <section
           style={{
             flex: 1,
@@ -649,6 +728,11 @@ let animationControls: AnimationPlaybackControls | undefined;
               items={loopingItems.map((item) => item.sortableId)}
               strategy={horizontalListSortingStrategy}
             >
+              {/* Renderiza o motion.div diretamente.
+                O 'loopingItems' estará vazio no primeiro render, 
+                depois será preenchido (Etapa 2), e SÓ ENTÃO a animação 
+                será ativada (Etapa 4), prevenindo o "jank".
+              */}
               <motion.div
                 style={{
                   display: 'flex',
@@ -656,7 +740,7 @@ let animationControls: AnimationPlaybackControls | undefined;
                   gap: '1rem',
                   padding: '1rem 6rem',
                   minHeight: '150px',
-                  x,
+                  x, // Conecta o motion value ao estilo
                 }}
               >
                 {loopingItems.map((loopItem) => (
@@ -679,6 +763,8 @@ let animationControls: AnimationPlaybackControls | undefined;
           </DndContext>
         </section>
       )}
+      {/* --- FIM DA MINHA ALTERAÇÃO --- */}
+
 
       {/* Footer */}
       <footer
@@ -699,7 +785,9 @@ let animationControls: AnimationPlaybackControls | undefined;
               type="range"
               min="5"
               max="45"
+              // --- MELHORIA: Acessibilidade ---
               aria-label="Duração do slide em segundos"
+              // --- FIM DA MELHORIA ---
               value={slideDuration}
               onChange={(e) => setSlideDuration(Number(e.target.value))}
               style={{ accentColor: '#1D3531' }}
